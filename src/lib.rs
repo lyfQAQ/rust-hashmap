@@ -78,11 +78,7 @@ where
     }
 
     pub fn contains_key(&self, key: &K) -> bool {
-        let bucket_idx = self.bucket_idx(key);
-        self.buckets[bucket_idx]
-            .iter()
-            .find(|(ekey, _)| ekey == key)
-            .is_some()
+        self.get(key).is_some()
     }
 
     pub fn len(&self) -> usize {
@@ -93,12 +89,65 @@ where
         self.items == 0
     }
 }
+
+pub struct Iter<'a, K: 'a, V: 'a> {
+    map: &'a HashMap<K, V>,
+    bucket_idx: usize,
+    at: usize,
+}
+
+impl<'a, K, V> Iterator for Iter<'a, K, V> {
+    type Item = (&'a K, &'a V);
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            match self.map.buckets.get(self.bucket_idx) {
+                Some(bucket) => {
+                    match bucket.get(self.at) {
+                        Some((k, v)) => {
+                            self.at += 1;
+                            break Some((k, v));
+                        }
+                        None => {
+                            // move to next bucket
+                            self.at = 0;
+                            self.bucket_idx += 1;
+                            // continue 可改成 self.next()，但会递归，所以改成 loop，防止爆栈
+                            continue;
+                        }
+                    }
+                }
+                _ => break None,
+            };
+        }
+    }
+}
+
+// 'a 要求元素的生命周期和Hashmap结构本身绑定
+/*
+    let iter = hashmap.iter().next().unwrap();
+    drop(hashmap);
+    iter....    // iter变成悬垂引用，无法使用
+*/
+impl<'a, K, V> IntoIterator for &'a HashMap<K, V> {
+    type Item = (&'a K, &'a V);
+
+    type IntoIter = Iter<'a, K, V>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Self::IntoIter {
+            map: self,
+            bucket_idx: 0,
+            at: 0,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn it_works() {
+    fn insert() {
         let mut map = HashMap::new();
         assert_eq!(map.len(), 0);
         map.insert("foo", 42);
@@ -107,5 +156,23 @@ mod tests {
         assert_eq!(map.remove(&"foo"), Some(42));
         assert_eq!(map.get(&"foo"), None);
         assert!(map.is_empty());
+    }
+    #[test]
+    fn iter() {
+        let mut map = HashMap::new();
+        map.insert("foo", 42);
+        map.insert("var", 22);
+        map.insert("dfs", 34);
+        map.insert("11", 6);
+        for (&k, &v) in &map {
+            match k {
+                "foo" => assert_eq!(v, 42),
+                "var" => assert_eq!(v, 22),
+                "dfs" => assert_eq!(v, 34),
+                "11" => assert_eq!(v, 6),
+                _ => unreachable!(),
+            }
+        }
+        assert_eq!((&map).into_iter().count(), 4);
     }
 }

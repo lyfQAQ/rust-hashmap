@@ -68,6 +68,30 @@ where
             .find(|(ekey, _)| ekey == key)
             .map(|(_, evalue)| evalue)
     }
+
+    pub fn remove(&mut self, key: &K) -> Option<V> {
+        let bucket_idx = self.bucket_idx(key);
+        let bucket = &mut self.buckets[bucket_idx];
+        let pos = bucket.iter().position(|(ekey, _)| ekey == key)?;
+        self.items -= 1;
+        Some(bucket.swap_remove(pos).1)
+    }
+
+    pub fn contains_key(&self, key: &K) -> bool {
+        let bucket_idx = self.bucket_idx(key);
+        self.buckets[bucket_idx]
+            .iter()
+            .find(|(ekey, _)| ekey == key)
+            .is_some()
+    }
+
+    pub fn len(&self) -> usize {
+        self.items
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.items == 0
+    }
 }
 #[cfg(test)]
 mod tests {
@@ -76,6 +100,12 @@ mod tests {
     #[test]
     fn it_works() {
         let mut map = HashMap::new();
+        assert_eq!(map.len(), 0);
         map.insert("foo", 42);
+        assert_eq!(map.len(), 1);
+        assert_eq!(map.get(&"foo"), Some(&42));
+        assert_eq!(map.remove(&"foo"), Some(42));
+        assert_eq!(map.get(&"foo"), None);
+        assert!(map.is_empty());
     }
 }

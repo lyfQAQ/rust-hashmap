@@ -1,4 +1,7 @@
-use std::hash::{DefaultHasher, Hash, Hasher};
+use std::{
+    borrow::Borrow,
+    hash::{DefaultHasher, Hash, Hasher},
+};
 
 const INITIAL_NBUCKETS: usize = 1;
 
@@ -20,7 +23,11 @@ impl<K, V> HashMap<K, V>
 where
     K: Hash + Eq,
 {
-    fn bucket_idx(&self, key: &K) -> usize {
+    fn bucket_idx<Q>(&self, key: &Q) -> usize
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq + ?Sized,
+    {
         let mut hasher = DefaultHasher::new();
         key.hash(&mut hasher);
         (hasher.finish() % self.buckets.len() as u64) as usize
@@ -61,23 +68,35 @@ where
         None
     }
 
-    pub fn get(&self, key: &K) -> Option<&V> {
+    pub fn get<Q>(&self, key: &Q) -> Option<&V>
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq + ?Sized,
+    {
         let bucket_idx = self.bucket_idx(key);
         self.buckets[bucket_idx]
             .iter()
-            .find(|(ekey, _)| ekey == key)
+            .find(|(ekey, _)| ekey.borrow() == key)
             .map(|(_, evalue)| evalue)
     }
 
-    pub fn remove(&mut self, key: &K) -> Option<V> {
+    pub fn remove<Q>(&mut self, key: &Q) -> Option<V>
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq + ?Sized,
+    {
         let bucket_idx = self.bucket_idx(key);
         let bucket = &mut self.buckets[bucket_idx];
-        let pos = bucket.iter().position(|(ekey, _)| ekey == key)?;
+        let pos = bucket.iter().position(|(ekey, _)| ekey.borrow() == key)?;
         self.items -= 1;
         Some(bucket.swap_remove(pos).1)
     }
 
-    pub fn contains_key(&self, key: &K) -> bool {
+    pub fn contains_key<Q>(&self, key: &Q) -> bool
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq + ?Sized,
+    {
         self.get(key).is_some()
     }
 

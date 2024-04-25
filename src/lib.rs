@@ -11,13 +11,15 @@ pub struct OccupiedEntry<'a, K, V> {
 
 pub struct VacantEntry<'a, K, V> {
     key: K,
-    bucket: &'a mut Vec<(K, V)>, // 必须的，因为需要在空值时插入 value
+    map: &'a mut HashMap<K, V>,
+    bucket: usize, // 必须的，因为需要在空值时插入 value
 }
 
 impl<'a, K, V> VacantEntry<'a, K, V> {
     fn insert(self, value: V) -> &'a mut V {
-        self.bucket.push((self.key, value));
-        &mut self.bucket.last_mut().unwrap().1
+        self.map.buckets[self.bucket].push((self.key, value));
+        self.map.items += 1;
+        &mut self.map.buckets[self.bucket].last_mut().unwrap().1
     }
 }
 
@@ -100,7 +102,7 @@ where
             new_buckets[bucket_id].push((key, value));
         }
 
-        std::mem::replace(&mut self.buckets, new_buckets);
+        let _ = std::mem::replace(&mut self.buckets, new_buckets);
     }
 
     pub fn insert(&mut self, key: K, value: V) -> Option<V> {
@@ -149,7 +151,6 @@ where
             self.resize();
         }
         let bucket_idx = self.bucket_idx(&key).unwrap();
-        let bucket = &mut self.buckets[bucket_idx];
         // 下面写法会报出对 bucket 的 second mutable borrow错误
 
         // match bucket.iter_mut().find(|(ekey, _)| *ekey == key) {
@@ -157,11 +158,18 @@ where
         //     None => Entry::Vacant(VacantEntry { key, bucket }),
         // }
 
-        match bucket.iter_mut().find(|(ekey, _)| *ekey == key) {
-            Some(entry) => Entry::Occupied(OccupiedEntry {
-                element: unsafe { &mut *(entry as *mut _) },
+        match self.buckets[bucket_idx]
+            .iter()
+            .position(|(ekey, _)| *ekey == key)
+        {
+            Some(idx) => Entry::Occupied(OccupiedEntry {
+                element: &mut self.buckets[bucket_idx][idx],
             }),
-            None => Entry::Vacant(VacantEntry { key, bucket }),
+            None => Entry::Vacant(VacantEntry {
+                key: key,
+                map: self,
+                bucket: bucket_idx,
+            }),
         }
     }
 

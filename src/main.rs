@@ -1,6 +1,6 @@
 use rust_hashmap::HashMap;
 fn main() {
-    test2();
+    test3();
 }
 
 fn test1() {
@@ -87,4 +87,5 @@ fn test3() {
         .iter()
         .cloned()
         .collect();
+    assert_eq!(_timber_resources.len(), 3);
 }

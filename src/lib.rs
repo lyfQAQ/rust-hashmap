@@ -5,6 +5,55 @@ use std::{
 
 const INITIAL_NBUCKETS: usize = 1;
 
+pub struct OccupiedEntry<'a, K, V> {
+    element: &'a mut (K, V),
+}
+
+pub struct VacantEntry<'a, K, V> {
+    key: K,
+    bucket: &'a mut Vec<(K, V)>, // 必须的，因为需要在空值时插入 value
+}
+
+impl<'a, K, V> VacantEntry<'a, K, V> {
+    fn insert(self, value: V) -> &'a mut V {
+        self.bucket.push((self.key, value));
+        &mut self.bucket.last_mut().unwrap().1
+    }
+}
+
+// 实现 entry 函数需要的结构
+pub enum Entry<'a, K, V> {
+    Occupied(OccupiedEntry<'a, K, V>),
+    Vacant(VacantEntry<'a, K, V>),
+}
+
+impl<'a, K, V> Entry<'a, K, V> {
+    // or_insert总是会构建参数 value，不管当前 Entry 是否是空的: et.or_insert(Vec::new()) 总是会执行 Vec::new()
+    pub fn or_insert(self, value: V) -> &'a mut V {
+        match self {
+            Self::Occupied(e) => &mut e.element.1,
+            Self::Vacant(e) => e.insert(value),
+        }
+    }
+    // or_insert_with 仅在 Entry 为空时，才执行maker来构建 value
+    pub fn or_insert_with<F>(self, maker: F) -> &'a mut V
+    where
+        F: FnOnce() -> V,
+    {
+        match self {
+            Self::Occupied(e) => &mut e.element.1,
+            Self::Vacant(e) => e.insert(maker()),
+        }
+    }
+
+    pub fn or_default(self) -> &'a mut V
+    where
+        V: Default,
+    {
+        self.or_insert_with(V::default)
+    }
+}
+
 pub struct HashMap<K, V> {
     buckets: Vec<Vec<(K, V)>>,
     items: usize,
@@ -23,14 +72,17 @@ impl<K, V> HashMap<K, V>
 where
     K: Hash + Eq,
 {
-    fn bucket_idx<Q>(&self, key: &Q) -> usize
+    fn bucket_idx<Q>(&self, key: &Q) -> Option<usize>
     where
         K: Borrow<Q>,
         Q: Hash + Eq + ?Sized,
     {
+        if self.buckets.is_empty() {
+            return None;
+        }
         let mut hasher = DefaultHasher::new();
         key.hash(&mut hasher);
-        (hasher.finish() % self.buckets.len() as u64) as usize
+        Some((hasher.finish() % self.buckets.len() as u64) as usize)
     }
     fn resize(&mut self) {
         let target_size = match self.buckets.len() {
@@ -55,7 +107,7 @@ where
         if self.buckets.is_empty() || self.items > 3 * self.buckets.len() / 4 {
             self.resize();
         }
-        let bucket_idx = self.bucket_idx(&key);
+        let bucket_idx = self.bucket_idx(&key)?;
         let bucket = &mut self.buckets[bucket_idx];
 
         for (ekey, evalue) in bucket.iter_mut() {
@@ -73,7 +125,7 @@ where
         K: Borrow<Q>,
         Q: Hash + Eq + ?Sized,
     {
-        let bucket_idx = self.bucket_idx(key);
+        let bucket_idx = self.bucket_idx(key)?;
         self.buckets[bucket_idx]
             .iter()
             .find(|(ekey, _)| ekey.borrow() == key)
@@ -85,11 +137,32 @@ where
         K: Borrow<Q>,
         Q: Hash + Eq + ?Sized,
     {
-        let bucket_idx = self.bucket_idx(key);
+        let bucket_idx = self.bucket_idx(key)?;
         let bucket = &mut self.buckets[bucket_idx];
         let pos = bucket.iter().position(|(ekey, _)| ekey.borrow() == key)?;
         self.items -= 1;
         Some(bucket.swap_remove(pos).1)
+    }
+
+    pub fn entry<'a>(&'a mut self, key: K) -> Entry<'a, K, V> {
+        if self.buckets.is_empty() || self.items > 3 * self.buckets.len() / 4 {
+            self.resize();
+        }
+        let bucket_idx = self.bucket_idx(&key).unwrap();
+        let bucket = &mut self.buckets[bucket_idx];
+        // 下面写法会报出对 bucket 的 second mutable borrow错误
+
+        // match bucket.iter_mut().find(|(ekey, _)| *ekey == key) {
+        //     Some(entry) => Entry::Occupied(OccupiedEntry { element: entry }),
+        //     None => Entry::Vacant(VacantEntry { key, bucket }),
+        // }
+
+        match bucket.iter_mut().find(|(ekey, _)| *ekey == key) {
+            Some(entry) => Entry::Occupied(OccupiedEntry {
+                element: unsafe { &mut *(entry as *mut _) },
+            }),
+            None => Entry::Vacant(VacantEntry { key, bucket }),
+        }
     }
 
     pub fn contains_key<Q>(&self, key: &Q) -> bool

@@ -1,6 +1,6 @@
 use rust_hashmap::HashMap;
 fn main() {
-    test3();
+    test2();
 }
 
 fn test1() {

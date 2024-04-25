@@ -190,7 +190,7 @@ where
     }
 }
 
-pub struct Iter<'a, K: 'a, V: 'a> {
+pub struct Iter<'a, K, V> {
     map: &'a HashMap<K, V>,
     bucket_idx: usize,
     at: usize,
@@ -238,6 +238,42 @@ impl<'a, K, V> IntoIterator for &'a HashMap<K, V> {
             map: self,
             bucket_idx: 0,
             at: 0,
+        }
+    }
+}
+
+pub struct IntoIter<K, V> {
+    map: HashMap<K, V>,
+    bucket_idx: usize,
+}
+
+impl<K, V> Iterator for IntoIter<K, V> {
+    type Item = (K, V);
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            match self.map.buckets.get_mut(self.bucket_idx) {
+                Some(bucket) => match bucket.pop() {
+                    Some(x) => break Some(x),
+                    None => {
+                        self.bucket_idx += 1;
+                        continue;
+                    }
+                },
+                _ => break None,
+            };
+        }
+    }
+}
+
+impl<K, V> IntoIterator for HashMap<K, V> {
+    type Item = (K, V);
+
+    type IntoIter = IntoIter<K, V>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Self::IntoIter {
+            map: self,
+            bucket_idx: 0,
         }
     }
 }
@@ -290,5 +326,19 @@ mod tests {
             }
         }
         assert_eq!((&map).into_iter().count(), 4);
+
+        let mut items = 0;
+        for (k, v) in map {
+            match k {
+                "foo" => assert_eq!(v, 42),
+                "var" => assert_eq!(v, 22),
+                "dfs" => assert_eq!(v, 34),
+                "11" => assert_eq!(v, 6),
+                _ => unreachable!(),
+            }
+            items += 1;
+        }
+        assert_eq!(4, items);
+        // map is moved
     }
 }

@@ -82,3 +82,9 @@ fn test2() {
     *stat += random_stat_buff();
     assert_eq!(player_stats.len(), 3);
 }
+fn test3() {
+    let _timber_resources: HashMap<&str, i32> = [("Norway", 100), ("Denmark", 50), ("Iceland", 10)]
+        .iter()
+        .cloned()
+        .collect();
+}
